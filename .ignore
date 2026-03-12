@@ -1,0 +1,30 @@
+﻿# VCS and environment
+.git/
+.venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local tooling cache
+.uv-cache/
+.uv-python/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Pipeline runtime output
+work/
+output/
+assets_manifest.csv
+candidate_assets.csv
+
+# Local config
+config.toml
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

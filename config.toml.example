@@ -1,0 +1,25 @@
+﻿[wolvenkit]
+cli_path = "C:/Tools/WolvenKit/WolvenKit.CLI.exe"
+
+[paths]
+game_dir = "C:/Program Files (x86)/Steam/steamapps/common/Cyberpunk 2077"
+work_dir = "./work"
+output_dir = "./output"
+
+[mod]
+name = "Edited Adverts"
+version = "0.1.0"
+description = "emoves or replaces explicit in-game advertisements in Cyberpunk 2077, including billboards and screens across Night City. Gameplay, quests, and story remain unchanged. Designed to create a more modest visual environment while preserving the game’s cyberpunk atmosphere."
+
+[textures]
+editable_format = "tga"
+preserve_dimensions = true
+preserve_alpha = true
+
+[discovery]
+mode = "hybrid"
+approved_manifest = "./assets_manifest.csv"
+candidate_report = "./candidate_assets.csv"
+
+[performance]
+workers = 4
