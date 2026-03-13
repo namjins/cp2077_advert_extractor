@@ -157,33 +157,21 @@ def merge_candidates_into_manifest(
     textures with the same stem) are resolved by prepending the parent
     directory name (e.g. "rayfield__rayfield_720p.tga").  If that is still
     not unique, the asset_id is appended as a final disambiguator.
+
+    Note: friendly filenames are re-derived for ALL rows (existing + new), so
+    running merge again will update old hash-based paths to human-readable names.
     """
     merged: dict[str, AssetRecord] = {row.asset_id: row for row in existing}
 
-    # Build collision-free friendly stems for every new candidate before
-    # inserting rows, so the full set is visible for deduplication.
-    # Pass existing filenames so new stems don't collide with prior rows.
+    # Add new candidates to the merged set
     new_candidates = [c for c in candidates if c.asset_id not in merged]
-    existing_stems = _collect_existing_stems(existing, config.textures.editable_format)
-    friendly_stems = _derive_friendly_stems(new_candidates, existing_stems)
-
     for candidate in new_candidates:
-        stem = friendly_stems[candidate.asset_id]
-        filename = f"{stem}.{config.textures.editable_format}"
-
-        editable_path = config.make_relative(
-            config.ads_editable_dir / filename
-        )
-        edited_path = config.make_relative(
-            config.ads_edited_dir / filename
-        )
-
         merged[candidate.asset_id] = AssetRecord(
             asset_id=candidate.asset_id,
             archive_path=candidate.archive_path,
             relative_texture_path=candidate.relative_texture_path,
-            editable_source_path=editable_path,
-            edited_path=edited_path,
+            editable_source_path="",  # Will be filled in below
+            edited_path="",  # Will be filled in below
             width=0,
             height=0,
             has_alpha=False,
@@ -193,6 +181,21 @@ def merge_candidates_into_manifest(
                 f"({candidate.reason})"
             ),
         )
+
+    # Build collision-free friendly stems for ALL candidates (existing + new).
+    # This ensures re-runs update old hash-based paths to human-readable names.
+    friendly_stems = _derive_friendly_stems(candidates)
+
+    for row in merged.values():
+        if row.asset_id in friendly_stems:
+            stem = friendly_stems[row.asset_id]
+            filename = f"{stem}.{config.textures.editable_format}"
+            row.editable_source_path = config.make_relative(
+                config.ads_editable_dir / filename
+            )
+            row.edited_path = config.make_relative(
+                config.ads_edited_dir / filename
+            )
 
     return sorted(merged.values(), key=lambda row: row.asset_id)
 
@@ -284,19 +287,6 @@ def _build_asset_id(archive_path: str, relative_texture_path: str) -> str:
     digest = hashlib.sha1(f"{archive_path}|{relative_texture_path}".encode("utf-8")).hexdigest()
     return digest[:16]
 
-
-def _collect_existing_stems(
-    existing: list[AssetRecord], editable_format: str
-) -> set[str]:
-    """Extract filename stems already claimed by existing manifest rows."""
-    stems: set[str] = set()
-    suffix = f".{editable_format}"
-    for row in existing:
-        if row.editable_source_path:
-            name = PurePosixPath(row.editable_source_path).name
-            if name.endswith(suffix):
-                stems.add(name[: -len(suffix)])
-    return stems
 
 
 def _derive_friendly_stems(
