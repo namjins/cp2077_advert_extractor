@@ -294,26 +294,67 @@ class TestMergeCandidatesFriendlyNaming:
         assert len(names) == 2, "Collision not resolved — two rows share the same filename"
         assert "banner_d.tga" not in names, "Stem collision was not detected"
 
-    def test_new_candidate_does_not_collide_with_existing_friendly_name(
+    def test_repeated_run_does_not_rename_existing_rows(self, tmp_path: Path) -> None:
+        """Running merge twice with the same candidate must not rename the row.
+
+        Regression for the bug where all candidate rows were added to the
+        'reserved' set — causing them to clash with their own stems and get
+        needlessly expanded on every subsequent run.
+
+        Run 1:  rayfield_720p.xbm  →  rayfield_720p.tga
+        Run 2:  same candidate, same existing row  →  must still be rayfield_720p.tga
+                (NOT rayfield__rayfield_720p.tga)
+        """
+        cfg = load_config(_write_config(tmp_path))
+        candidate = _make_candidate(
+            "fcea8993b4ef62b5",
+            "base/gameplay/gui/world/adverts/rayfield/rayfield_720p.xbm",
+        )
+
+        # Simulate run 1 — fresh manifest
+        result1 = merge_candidates_into_manifest(cfg, [], [candidate], default_status="approved")
+        name_run1 = Path(result1[0].editable_source_path).name
+        assert name_run1 == "rayfield_720p.tga"
+
+        # Simulate run 2 — same candidate, existing row now has friendly name
+        result2 = merge_candidates_into_manifest(cfg, result1, [candidate], default_status="approved")
+        name_run2 = Path(result2[0].editable_source_path).name
+        assert name_run2 == name_run1, (
+            f"Row was renamed on second run: {name_run1!r} → {name_run2!r}"
+        )
+
+    def test_new_candidate_does_not_collide_with_manually_added_row(
         self, tmp_path: Path
     ) -> None:
-        """A new candidate whose stem matches an existing row's filename gets a longer stem."""
+        """A new candidate must not steal the filename of a manually-added row.
+
+        'existing1' is NOT in the candidates list (manually added).
+        Its stem 'my_banner' is reserved.  New candidate 'newid1' also produces
+        'my_banner' as its simple stem and should be expanded.
+        """
         cfg = load_config(_write_config(tmp_path))
 
         existing = [
             _make_row(
                 asset_id="existing1",
-                relative_texture_path="base/adverts/rayfield/banner_d.xbm",
-                editable_source_path="work/ads/editable/rayfield__banner_d.tga",
-                edited_path="work/ads/edited/rayfield__banner_d.tga",
+                relative_texture_path="base/adverts/rayfield/my_banner.xbm",
+                editable_source_path="work/ads/editable/my_banner.tga",
+                edited_path="work/ads/edited/my_banner.tga",
             )
         ]
-        new_candidate = _make_candidate("newid1", "base/adverts/kiroshi/banner_d.xbm")
+        # New candidate has the same stem but different asset_id and parent dir
+        new_candidate = _make_candidate("newid1", "base/adverts/kiroshi/my_banner.xbm")
 
         result = merge_candidates_into_manifest(cfg, existing, [new_candidate])
 
         names = {Path(r.editable_source_path).name for r in result}
-        assert len(names) == 2, "New candidate collided with existing row filename"
+        assert len(names) == 2, "New candidate stole the filename of a manually-added row"
+        # The existing manual row must keep its original filename
+        existing_row = next(r for r in result if r.asset_id == "existing1")
+        assert Path(existing_row.editable_source_path).name == "my_banner.tga"
+        # The new candidate must have been expanded
+        new_row = next(r for r in result if r.asset_id == "newid1")
+        assert Path(new_row.editable_source_path).name != "my_banner.tga"
 
 
 # ---------------------------------------------------------------------------

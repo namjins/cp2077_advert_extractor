@@ -184,14 +184,18 @@ def merge_candidates_into_manifest(
 
     # Build collision-free friendly stems for ALL candidates (existing + new).
     # This ensures re-runs update old hash-based paths to human-readable names.
-    # Pass existing stems as "reserved" so new candidates don't collide with them.
-    existing_stems = set()
+    # Pass stems from manually-added rows (not in candidates) as "reserved" so
+    # new candidates don't steal filenames the user assigned by hand.
+    # Rows that ARE candidates will have their stems re-derived here anyway,
+    # so they must NOT be included in reserved (or they'd clash with themselves
+    # and be needlessly renamed on every re-run).
+    candidate_ids = {c.asset_id for c in candidates}
+    reserved_stems = set()
     for row in existing:
-        if row.editable_source_path:
-            stem = PurePosixPath(row.editable_source_path).stem
-            existing_stems.add(stem)
+        if row.asset_id not in candidate_ids and row.editable_source_path:
+            reserved_stems.add(PurePosixPath(row.editable_source_path).stem)
 
-    friendly_stems = _derive_friendly_stems(candidates, reserved=existing_stems)
+    friendly_stems = _derive_friendly_stems(candidates, reserved=reserved_stems)
 
     for row in merged.values():
         if row.asset_id in friendly_stems:
