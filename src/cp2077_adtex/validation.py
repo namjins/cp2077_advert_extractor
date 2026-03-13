@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+﻿"""Image validation for edited textures before finalization.
+
+Checks that user-supplied edits are readable images with dimensions and alpha
+channels matching the original.  This prevents WolvenKit import failures and
+in-game rendering glitches from mismatched texture properties.
+"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path

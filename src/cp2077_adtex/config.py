@@ -1,4 +1,17 @@
-﻿from __future__ import annotations
+﻿"""Configuration loading and validation for the ad texture pipeline.
+
+Reads config.toml and produces a fully-resolved PipelineConfig object.
+All relative paths in the TOML are resolved against the directory containing
+config.toml (base_dir), so the project can live anywhere on disk.
+
+Work directory layout managed by PipelineConfig properties:
+    work/ads/original/   — raw .xbm exports from WolvenKit (untouched copies)
+    work/ads/editable/   — converted .tga/.png files the user can open in an editor
+    work/ads/edited/     — user places modified versions here
+    work/ads/packed/     — WolvenKit import staging tree for re-packing
+"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,7 +19,7 @@ import tomllib
 
 
 class ConfigError(ValueError):
-    """Raised when config.toml is invalid."""
+    """Raised when config.toml is invalid or missing required fields."""
 
 
 @dataclass(slots=True)
@@ -49,6 +62,7 @@ class PerformanceConfig:
 
 @dataclass(slots=True)
 class PipelineConfig:
+    """Top-level config — aggregates all sections and provides derived paths."""
     config_path: Path
     base_dir: Path
     wolvenkit: WolvenKitConfig

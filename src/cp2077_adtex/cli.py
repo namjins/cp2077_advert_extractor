@@ -1,4 +1,13 @@
-﻿from __future__ import annotations
+﻿"""CLI entry point — Typer commands for each pipeline stage.
+
+Commands:
+  extract          — discover + export approved textures to editable format
+  discover-assets  — scan archives for ad texture candidates
+  validate-list    — cross-reference a research file against the manifest
+  finalize         — validate edits, re-import, pack archive, produce zip
+"""
+
+from __future__ import annotations
 
 from pathlib import Path
 
@@ -8,6 +17,7 @@ from rich.console import Console
 from .config import ConfigError, load_config
 from .extractor import run_discovery_stage, run_extract_stage
 from .finalizer import run_finalize_stage
+from .list_validator import run_validate_list_stage
 from .logging_utils import setup_pipeline_logger
 from .wolvenkit import WolvenKitRunner
 
@@ -19,6 +29,14 @@ console = Console()
 def extract_cmd(
     config: Path = typer.Option(..., "--config", exists=True, readable=True),
     discover: bool = typer.Option(False, "--discover", help="Run discovery before extraction"),
+    all_known_roots: bool = typer.Option(
+        False,
+        "--all-known-roots",
+        help=(
+            "Populate and approve manifest from known ad roots in base+ep1 archives "
+            "before extraction"
+        ),
+    ),
     skip_extract: bool = typer.Option(
         False,
         "--skip-extract",
@@ -27,18 +45,36 @@ def extract_cmd(
     clean: bool = typer.Option(
         False,
         "--clean",
-        help="Delete work/ads and rebuild extract outputs",
+        help="Delete work/ads and rebuild extract outputs (will prompt if edited/ has files)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Skip confirmation prompts (e.g. when --clean would delete edited files)",
     ),
 ) -> None:
     """Extract approved assets and generate editable files."""
     try:
         cfg = load_config(config)
+
+        # Guard against accidental deletion of user-edited textures
+        if clean and not force and cfg.ads_edited_dir.exists():
+            edited_files = list(cfg.ads_edited_dir.iterdir())
+            if edited_files:
+                console.print(
+                    f"[yellow]warning:[/yellow] --clean will delete {len(edited_files)} "
+                    f"file(s) in {cfg.ads_edited_dir}"
+                )
+                if not typer.confirm("Continue?"):
+                    raise typer.Abort()
+
         logger, log_path = setup_pipeline_logger(cfg.paths.output_dir, stage="extract")
         runner = WolvenKitRunner(cfg.wolvenkit.cli_path)
         result = run_extract_stage(
             cfg,
             runner,
             discover=discover,
+            all_known_roots=all_known_roots,
             skip_extract=skip_extract,
             clean=clean,
             logger=logger,
@@ -75,11 +111,41 @@ def discover_assets_cmd(
             runner,
             report_only=report_only,
             logger=logger,
+            log_path=log_path,
         )
         console.print(f"discover complete: candidates={result.processed}")
         console.print(f"candidate report: {cfg.discovery.candidate_report}")
         console.print(f"manifest: {cfg.discovery.approved_manifest}")
         console.print(f"pipeline log: {log_path}")
+    except (ConfigError, ValueError, RuntimeError) as exc:
+        raise typer.Exit(code=_print_error(str(exc))) from exc
+
+
+@app.command("validate-list")
+def validate_list_cmd(
+    config: Path = typer.Option(..., "--config", exists=True, readable=True),
+    research_file: Path = typer.Option(..., "--research-file", exists=True, readable=True),
+) -> None:
+    """Validate a research list against extracted manifest assets."""
+    try:
+        cfg = load_config(config)
+        logger, log_path = setup_pipeline_logger(cfg.paths.output_dir, stage="validate_list")
+        result = run_validate_list_stage(
+            cfg,
+            research_file=research_file,
+            logger=logger,
+            log_path=log_path,
+        )
+        console.print(
+            "validate-list complete: "
+            f"processed={result.processed} matched={result.matched} "
+            f"missing_in_extract={result.missing_in_extract} "
+            f"archive_mismatch={result.archive_mismatch} "
+            f"unparseable={result.unparseable}"
+        )
+        console.print(f"report: {result.csv_path}")
+        console.print(f"summary: {result.summary_path}")
+        console.print(f"pipeline log: {result.log_path}")
     except (ConfigError, ValueError, RuntimeError) as exc:
         raise typer.Exit(code=_print_error(str(exc))) from exc
 

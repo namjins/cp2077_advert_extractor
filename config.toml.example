@@ -9,7 +9,7 @@ output_dir = "./output"
 [mod]
 name = "Edited Adverts"
 version = "0.1.0"
-description = "emoves or replaces explicit in-game advertisements in Cyberpunk 2077, including billboards and screens across Night City. Gameplay, quests, and story remain unchanged. Designed to create a more modest visual environment while preserving the game’s cyberpunk atmosphere."
+description = "Removes or replaces explicit in-game advertisements in Cyberpunk 2077, including billboards and screens across Night City. Gameplay, quests, and story remain unchanged. Designed to create a more modest visual environment while preserving the game’s cyberpunk atmosphere."
 
 [textures]
 editable_format = "tga"

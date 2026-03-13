@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+﻿"""Read/write the assets_manifest.csv file that drives the pipeline.
+
+The manifest is the single source of truth for which textures are discovered,
+approved, exported, edited, and ready for finalization.  Every pipeline stage
+reads it, and extract/finalize stages write back updated status and metadata.
+"""
+
+from __future__ import annotations
 
 import csv
 from pathlib import Path

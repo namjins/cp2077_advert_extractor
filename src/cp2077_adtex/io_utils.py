@@ -1,4 +1,10 @@
-﻿from __future__ import annotations
+﻿"""Atomic file-write helpers and directory creation.
+
+All writes go to a temp file in the same directory, then os.replace() swaps
+atomically — readers never see a half-written manifest or report.
+"""
+
+from __future__ import annotations
 
 import csv
 import io

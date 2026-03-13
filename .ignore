@@ -21,6 +21,7 @@ work/
 output/
 assets_manifest.csv
 candidate_assets.csv
+tmp_*/
 
 # Local config
 config.toml

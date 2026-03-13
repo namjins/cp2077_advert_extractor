@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python -m pytest tests/ -v)",
+      "WebSearch",
+      "WebFetch(domain:wiki.redmodding.org)",
+      "WebFetch(domain:www.nexusmods.com)",
+      "WebFetch(domain:github.com)",
+      "Read(//d/repos/cp2077_advert_extractor/**)"
+    ]
+  }
+}

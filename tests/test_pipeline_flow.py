@@ -119,6 +119,7 @@ def test_extract_then_finalize_flow(tmp_path: Path) -> None:
         cfg,
         runner,
         discover=False,
+        all_known_roots=False,
         skip_extract=False,
         clean=False,
         logger=logger,
@@ -158,3 +159,6 @@ def test_extract_then_finalize_flow(tmp_path: Path) -> None:
         names = set(handle.namelist())
 
     assert "archive/pc/mod/ads_test_mod.archive" in names
+
+
+

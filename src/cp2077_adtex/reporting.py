@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+﻿"""Pipeline reporting — asset log (CSV) and human-readable summary (TXT).
+
+Every stage writes:
+  output/asset_log.csv  — one row per asset processed (stage, status, message)
+  output/summary.txt    — aggregate counts and a list of output file paths
+"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime

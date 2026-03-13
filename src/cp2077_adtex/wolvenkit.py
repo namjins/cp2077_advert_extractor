@@ -1,5 +1,25 @@
-﻿from __future__ import annotations
+﻿"""WolvenKit CLI wrapper — all interaction with the WolvenKit binary goes through here.
 
+WolvenKit (https://wiki.redmodding.org/wolvenkit) is the de-facto modding tool
+for Cyberpunk 2077.  This module wraps four CLI commands:
+
+  archiveinfo --diff  — list every file inside a .archive (JSON output)
+  unbundle            — extract raw .xbm files from a .archive
+  export              — convert .xbm to an editable format (.tga, .png, etc.)
+  import              — convert an edited image back into an .xbm
+  pack                — assemble a directory tree into a new .archive
+
+Each method works in a temp directory to avoid polluting the workspace, then
+copies only the final output file to the intended destination.
+
+The Executor callable allows tests to inject a FakeRunner without touching the
+filesystem or the real WolvenKit binary.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import json
 import logging
 from pathlib import Path
 import re
@@ -10,14 +30,19 @@ from typing import Callable, Sequence
 
 
 class WolvenKitError(RuntimeError):
-    """Raised when a WolvenKit command fails."""
+    """Raised when a WolvenKit command fails or produces unexpected output."""
 
 
+# Pluggable executor type — accepts a command list, returns CompletedProcess.
+# Default is subprocess.run; tests supply a fake that records calls.
 Executor = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
 
 class WolvenKitRunner:
-    """Thin wrapper around WolvenKit CLI commands."""
+    """Thin wrapper around WolvenKit CLI commands.
+
+    All methods accept a logger for tracing, and raise WolvenKitError on failure.
+    """
 
     def __init__(self, cli_path: Path, executor: Executor | None = None) -> None:
         self.cli_path = cli_path
@@ -31,24 +56,45 @@ class WolvenKitRunner:
         regex: str | None = None,
         pattern: str | None = None,
     ) -> list[str]:
-        cmd = [str(self.cli_path), "archiveinfo", str(archive_file), "--list"]
-        if pattern:
-            cmd.extend(["--pattern", pattern])
-        elif regex:
-            cmd.extend(["--regex", regex])
+        """Run `archiveinfo --diff` and return every file path inside the archive.
 
+        Optional regex/pattern filters are applied after parsing.  Paths are
+        returned with backslash separators (matching WolvenKit's convention).
+        """
+        cmd = [str(self.cli_path), "archiveinfo", str(archive_file), "--diff"]
         completed = self._run_capture(cmd, logger)
 
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            head = completed.stdout[:400]
+            raise WolvenKitError(
+                f"archiveinfo --diff returned non-JSON output for {archive_file}: {head!r}"
+            ) from exc
+
+        files_obj = payload.get("Files", {})
+        if not isinstance(files_obj, dict):
+            return []
+
+        regex_obj = re.compile(regex) if regex else None
+        pattern_text = pattern.replace("/", "\\") if pattern else None
+
         paths: list[str] = []
-        for line in completed.stdout.splitlines():
-            entry = line.strip()
-            if not entry:
+        for item in files_obj.values():
+            if not isinstance(item, dict):
                 continue
-            if entry.startswith("["):
+            name = item.get("Name") or item.get("FileName")
+            if not isinstance(name, str):
                 continue
-            if "\\" not in entry and "/" not in entry:
+
+            normalized = name.replace("/", "\\")
+
+            if pattern_text and not fnmatch.fnmatch(normalized, pattern_text):
                 continue
-            paths.append(entry.replace("/", "\\"))
+            if regex_obj and not regex_obj.search(normalized):
+                continue
+
+            paths.append(normalized)
 
         return paths
 
@@ -62,6 +108,11 @@ class WolvenKitRunner:
         uext: str,
         logger: logging.Logger,
     ) -> None:
+        """Unbundle a .xbm from an archive and export it as an editable image.
+
+        Steps: unbundle (archive -> raw .xbm) then export (.xbm -> .tga/.png).
+        Both happen in a temp dir; only the final image is copied to output_file.
+        """
         output_file.parent.mkdir(parents=True, exist_ok=True)
         archive_file = self._resolve_archive_path(game_dir, archive_path)
         if not archive_file.exists():
@@ -74,13 +125,14 @@ class WolvenKitRunner:
             tmp_root = Path(tmp)
             unbundle_dir = tmp_root / "unbundle"
             export_dir = tmp_root / "export"
+            export_dir.mkdir(parents=True, exist_ok=True)
 
             self._run(
                 [
                     str(self.cli_path),
                     "unbundle",
                     str(archive_file),
-                    "--outpath",
+                    "-o",
                     str(unbundle_dir),
                     "--regex",
                     regex,
@@ -103,9 +155,9 @@ class WolvenKitRunner:
                     str(self.cli_path),
                     "export",
                     str(extracted),
-                    "--outpath",
+                    "-o",
                     str(export_dir),
-                    "--gamepath",
+                    "-gp",
                     str(game_dir),
                     "--uext",
                     uext,
@@ -137,7 +189,16 @@ class WolvenKitRunner:
         uext: str,
         logger: logging.Logger,
     ) -> None:
-        del game_dir, archive_path
+        """Convert an edited image back to .xbm and stage it for packing.
+
+        The edited file is placed in a temp dir with the expected relative path
+        structure, then `wkit import` converts it back.  The result lands in
+        packed_root under the correct directory tree for `wkit pack`.
+        """
+        # game_dir and archive_path are accepted for interface symmetry with
+        # export_texture (and the FakeRunner test double), but WolvenKit's
+        # "import" command only needs the raw file and an output directory.
+        _ = game_dir, archive_path
 
         if not edited_file.exists():
             raise WolvenKitError(f"Edited file not found: {edited_file}")
@@ -159,7 +220,7 @@ class WolvenKitRunner:
                     str(self.cli_path),
                     "import",
                     str(staged_raw),
-                    "--outpath",
+                    "-o",
                     str(out_dir),
                 ],
                 logger,
@@ -172,6 +233,11 @@ class WolvenKitRunner:
         output_archive: Path,
         logger: logging.Logger,
     ) -> None:
+        """Pack a directory of imported .xbm files into a single .archive.
+
+        WolvenKit names the output after the source directory, so we rename it
+        to the desired output_archive path afterward.
+        """
         if not packed_root.exists():
             raise WolvenKitError(f"Packed root does not exist: {packed_root}")
 
@@ -181,7 +247,7 @@ class WolvenKitRunner:
                 str(self.cli_path),
                 "pack",
                 str(packed_root),
-                "--outpath",
+                "-o",
                 str(output_archive.parent),
             ],
             logger,

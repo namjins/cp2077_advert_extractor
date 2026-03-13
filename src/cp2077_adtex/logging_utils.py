@@ -1,4 +1,11 @@
-﻿from __future__ import annotations
+﻿"""Pipeline logger setup — file + console dual output.
+
+Each stage creates a timestamped log file (output/pipeline_<timestamp>.log)
+and also streams to the console.  The logger name includes stage + timestamp
+to avoid collisions when multiple stages run in the same process.
+"""
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime

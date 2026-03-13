@@ -1,8 +1,23 @@
-﻿from __future__ import annotations
+﻿"""Core data models for the ad texture pipeline.
+
+The central data structure is AssetRecord, which represents a single texture
+in the assets_manifest.csv file.  Each record tracks:
+  - Where the texture lives in the game archives (archive_path + relative_texture_path)
+  - Where editable/edited copies are stored on disk
+  - Image metadata (dimensions, alpha) used for validation
+  - A status field that drives the pipeline:
+      skipped  -> discovered but not selected for extraction
+      approved -> selected for extraction / already extracted
+      ready    -> user has placed an edited file and wants it finalized
+      failed   -> extraction or finalize encountered an error
+"""
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping
 
+# Column order must match the CSV header written by manifest.write_manifest().
 MANIFEST_COLUMNS = [
     "asset_id",
     "archive_path",
@@ -34,6 +49,21 @@ def parse_bool(raw: str) -> bool:
 
 @dataclass(slots=True)
 class AssetRecord:
+    """One row in assets_manifest.csv — tracks a single texture through the pipeline.
+
+    Fields:
+        asset_id:               SHA-1 prefix derived from archive_path + texture path (16 hex chars).
+        archive_path:           Relative path to the .archive file inside game_dir
+                                (e.g. "archive/pc/content/basegame_4_gamedata.archive").
+        relative_texture_path:  Internal path within the archive
+                                (e.g. "base/gameplay/gui/world/adverts/rayfield/rayfield_720p.xbm").
+        editable_source_path:   Path (relative to base_dir) to the extracted editable .tga/.png.
+        edited_path:            Path (relative to base_dir) where the user places their edit.
+        width, height:          Original texture dimensions (0 until first successful export).
+        has_alpha:              Whether the source texture has an alpha channel.
+        status:                 Pipeline state — see module docstring for valid transitions.
+        notes:                  Free-text notes populated by the pipeline or the user.
+    """
     asset_id: str
     archive_path: str
     relative_texture_path: str
