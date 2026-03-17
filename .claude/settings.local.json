@@ -8,6 +8,9 @@
       "WebFetch(domain:github.com)",
       "Read(//d/repos/cp2077_advert_extractor/**)",
       "Bash(.venv/Scripts/python scripts/mark_skipped.py)"
+    ],
+    "additionalDirectories": [
+      "D:\\repos\\cp2077_advert_extractor\\.claude"
     ]
   }
 }
