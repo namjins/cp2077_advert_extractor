@@ -67,6 +67,18 @@ def run_finalize_stage(
     )
 
     manifest_rows = read_manifest(config.discovery.approved_manifest)
+
+    # Auto-promote approved → ready when an edited file exists on disk
+    promoted = 0
+    for row in manifest_rows:
+        if row.status == "approved" and row.edited_path:
+            edited = config.resolve_user_path(row.edited_path)
+            if edited.exists():
+                row.status = "ready"
+                promoted += 1
+    if promoted:
+        logger.info("Auto-promoted %s asset(s) from approved → ready (edited file found)", promoted)
+
     target_rows = [row for row in manifest_rows if row.status == "ready"]
 
     if only_changed:
