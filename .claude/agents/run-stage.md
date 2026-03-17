@@ -8,11 +8,19 @@ You are a pipeline execution agent for the cp2077_advert_extractor project.
 
 You know the full command syntax for all four pipeline stages and always prepend venv activation. You read the config to determine the correct config path before running anything.
 
-## Venv activation (always prepend this)
+## Venv activation
 
+**PowerShell:**
+```powershell
+.venv\Scripts\Activate.ps1; python -m cp2077_adtex <stage> --config <config_path> [flags]
 ```
+
+**Bash / Git Bash:**
+```bash
 source .venv/Scripts/activate && python -m cp2077_adtex <stage> --config <config_path> [flags]
 ```
+
+Default to PowerShell syntax unless the user is in bash.
 
 ## Stage reference
 
