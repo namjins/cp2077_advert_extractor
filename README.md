@@ -108,9 +108,18 @@ The manifest (`assets_manifest.csv`) maps each friendly filename back to the cor
 - `output/list_validation.csv`
 - `output/list_validation_summary.txt`
 
+## Flags
+
+- `--clean` (extract): deletes `work/ads/` and rebuilds from scratch. Prompts for confirmation if `edited/` has files.
+- `--force` (extract): suppresses the `--clean` confirmation prompt and disables the skip-existing optimization (forces re-export of all textures even if cached files exist).
+- `--only-changed` (finalize): SHA-256 compares each edited file against the editable source; only genuinely modified textures are re-imported. Useful when iterating on a few textures from a large set.
+- `--skip-validate` (finalize): skips dimension and alpha channel checks before importing. Use when you intentionally changed image properties.
+
 ## Troubleshooting
 
 - `WolvenKit CLI not found`: verify `[wolvenkit].cli_path`
 - Empty manifest: run `extract --all-known-roots`, run discovery, or provide manifest rows
-- Dimension/alpha validation failures: re-export and preserve required metadata
+- Dimension/alpha validation failures: re-export and preserve required metadata, or set `preserve_dimensions = false` / `preserve_alpha = false` in config.toml
 - Pack skipped: no assets with `status=ready` imported successfully
+- Oodle DLL warning (exit code 3): copy `oo2ext_7_win64.dll` from `<game>/bin/x64/` to the WolvenKit CLI directory. Without it, textures may appear extremely bright or matte black in-game
+- Washed-out or white textures after reimport: ensure the pipeline uses `import -p <dir> -k` (the `-k` flag preserves the original `.xbm` metadata including IsGamma/color-space settings). This is the default behavior — if you see this issue, check for WolvenKit CLI version compatibility

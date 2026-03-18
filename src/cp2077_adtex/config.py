@@ -97,12 +97,25 @@ class PipelineConfig:
         return self.paths.output_dir / "archive" / "pc" / "mod" / f"{self.mod.name}.archive"
 
     def resolve_user_path(self, raw: str | Path) -> Path:
+        """Resolve a user-facing path (from manifest or config) to an absolute Path.
+
+        Relative paths are resolved against base_dir (the directory containing
+        config.toml), so the project is fully portable — move the directory
+        and all relative paths still work.
+        """
         path = Path(raw)
         if path.is_absolute():
             return path
         return (self.base_dir / path).resolve()
 
     def make_relative(self, path: Path) -> str:
+        """Convert an absolute path to a posix-style string relative to base_dir.
+
+        Used when storing paths in the manifest CSV — keeps the manifest
+        portable across machines with different absolute prefixes.
+        Falls back to the absolute path string if *path* is outside base_dir
+        (e.g. on a different drive on Windows).
+        """
         resolved = path.resolve()
         try:
             return resolved.relative_to(self.base_dir.resolve()).as_posix()
@@ -153,6 +166,9 @@ def load_config(config_path: str | Path) -> PipelineConfig:
         preserve_alpha=bool(textures_data.get("preserve_alpha", True)),
     )
 
+    # Only "hybrid" mode is implemented in v1.  The config key exists so
+    # future versions can add alternative discovery strategies (e.g. pure
+    # regex, ML-based) without a breaking config change.
     mode = str(discovery_data.get("mode", "hybrid")).strip().lower()
     if mode != "hybrid":
         raise ConfigError(
@@ -189,6 +205,11 @@ def load_config(config_path: str | Path) -> PipelineConfig:
 
 
 def _resolve_path(base_dir: Path, raw: str) -> Path:
+    """Resolve a config path value to an absolute Path.
+
+    Relative paths (e.g. "./work") are resolved against base_dir (the
+    directory containing config.toml).  Absolute paths pass through unchanged.
+    """
     value = str(raw).strip()
     if not value:
         raise ConfigError("Path values cannot be empty")

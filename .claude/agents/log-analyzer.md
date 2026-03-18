@@ -68,5 +68,19 @@ ROOT CAUSES & FIXES
 | `WolvenKit exit code` | WolvenKit CLI error | Check WolvenKit path in config, check stderr for details |
 | `PIL cannot identify image` | Corrupt or wrong-format file | Re-export your texture as TGA or PNG |
 | `permission denied` | File locked | Close any image editor that has the file open |
+| `Oodle couldn't be loaded` | Missing Oodle DLL — can cause color corruption (extreme brightness or matte black) | Copy `oo2ext_7_win64.dll` from game `bin/x64/` to WolvenKit CLI directory. **Treat as hard stop for color correctness.** |
+| Textures washed out / blown out in-game | `IsGamma` not preserved — WolvenKit guessed wrong color-space | Ensure `import -p <dir> -k` is used so original `.xbm` metadata is preserved. Do not recreate `.xbm` from scratch. WolvenKit docs warn color textures will be "blown-out or too bright" if `isGamma` isn't set true. |
+| Textures too dark after reimport | Known WolvenKit bug: export→import roundtrip or resaving PNG/TGA in external editor can shift tone | Minimize format-hopping; edit the exact format exported by the pipeline. |
+| Texture completely black or white | Compression mismatch | Set `Compression = TCM_None` and reimport (use WolvenKit GUI as diagnostic, then pack via CLI). |
+| Transparency wrong (haloing, visible crop marks) | Alpha channel lost or all-opaque after editing | Re-export edited file as 32-bit RGBA with correct alpha mask from original. |
+| `Input path does not exist` (exit 3) after successful import | Invalid CLI flag passed to WolvenKit (e.g. `--settings`) | Check command-spy tests; remove any flags not in the allowlist. Use `import -p <dir> -k` workflow. |
+
+## WolvenKit color-space reference
+
+- `IsGamma = true` is required for color/diffuse/UI textures, or they appear blown out
+- `TexG_Generic_UI` — for `.inkatlas`-backed UI textures (WolvenKit code sets `IsGamma = true` for this preset, despite wiki page saying otherwise)
+- `TexG_Generic_Color` — for color/diffuse textures (`IsGamma = true`)
+- `TexG_Generic_Normal` — for normal maps (`IsGamma = false`)
+- **Safest approach**: preserve the original `.xbm`'s metadata via `import -k` rather than guessing presets
 
 Always conclude with the exact next command to run after fixes are applied.

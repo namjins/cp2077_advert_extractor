@@ -24,6 +24,9 @@ class AssetLogEntry:
     message: str
 
     def to_row(self) -> dict[str, str]:
+        """Convert to a CSV-ready dict.  Timestamp is generated at call time
+        so each row reflects when it was actually written, not when the
+        AssetLogEntry was created."""
         return {
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             "stage": self.stage,

@@ -18,14 +18,22 @@ LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 
 
 def setup_pipeline_logger(output_dir: Path, stage: str) -> tuple[logging.Logger, Path]:
+    """Create a logger that writes to both a timestamped file and the console.
+
+    The logger name includes both the stage and timestamp so that multiple
+    stages running in the same process (e.g. discovery triggered from extract)
+    get separate loggers with independent handlers — avoiding duplicate log
+    lines or handler collisions.
+    """
     ensure_dir(output_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = output_dir / f"pipeline_{timestamp}.log"
 
+    # Unique logger name per stage + timestamp to avoid handler conflicts.
     logger = logging.getLogger(f"cp2077_adtex.{stage}.{timestamp}")
     logger.setLevel(logging.INFO)
-    logger.handlers = []
-    logger.propagate = False
+    logger.handlers = []       # Clear any leftover handlers from prior runs.
+    logger.propagate = False   # Don't bubble up to root logger (avoids dupes).
 
     formatter = logging.Formatter(LOG_FORMAT)
 

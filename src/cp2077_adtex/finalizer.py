@@ -68,19 +68,29 @@ def run_finalize_stage(
 
     manifest_rows = read_manifest(config.discovery.approved_manifest)
 
-    # Auto-promote approved → ready when an edited file exists on disk
+    # --- Auto-promotion ---
+    # When a user places an edited file in work/ads/edited/, that signals
+    # intent to finalize.  We auto-promote "approved" (never finalized) and
+    # "failed" (previous attempt failed, user is retrying with a fixed edit)
+    # to "ready" so the user doesn't have to manually update the manifest.
+    # "skipped" rows are NOT promotable — the user explicitly excluded those.
+    promotable = ("approved", "failed")
     promoted = 0
     for row in manifest_rows:
-        if row.status == "approved" and row.edited_path:
+        if row.status in promotable and row.edited_path:
             edited = config.resolve_user_path(row.edited_path)
             if edited.exists():
                 row.status = "ready"
+                row.notes = ""  # Clear any previous failure notes.
                 promoted += 1
     if promoted:
-        logger.info("Auto-promoted %s asset(s) from approved → ready (edited file found)", promoted)
+        logger.info("Auto-promoted %s asset(s) to ready (edited file found)", promoted)
 
     target_rows = [row for row in manifest_rows if row.status == "ready"]
 
+    # --only-changed: SHA-256 compare edited file against the editable source
+    # to skip assets the user hasn't actually modified.  Useful when iterating
+    # on a few textures out of a large set.
     if only_changed:
         target_rows = _filter_changed_rows(config, target_rows, config.performance.workers)
 
@@ -143,8 +153,13 @@ def run_finalize_stage(
                 )
             )
 
+    # Safety-net skipped count.  In the current implementation every target
+    # row either succeeds or fails, so this is always 0.  It exists as a
+    # guard against future code paths that might leave a row unaccounted.
     skipped = max(processed - succeeded - failed, 0)
 
+    # Only pack and zip if at least one texture was successfully reimported.
+    # An empty .archive would be pointless and could confuse mod managers.
     zip_path: Path | None = None
     if succeeded > 0:
         runner.pack_archive(
@@ -213,6 +228,13 @@ def _finalize_assets_parallel(
     skip_validate: bool,
     logger: logging.Logger,
 ) -> dict[str, FinalizeOutcome]:
+    """Validate and reimport edited assets concurrently via a thread pool.
+
+    Each asset runs independently: validate (optional) -> WolvenKit import.
+    Failures are captured per-asset so one broken texture doesn't abort the
+    entire batch.  Python's logging module is thread-safe, so logger calls
+    from worker threads are safe without extra synchronization.
+    """
     if not rows:
         return {}
 
@@ -240,6 +262,7 @@ def _finalize_assets_parallel(
                 try:
                     outcome = future.result()
                 except Exception as exc:  # noqa: BLE001
+                    # Catch-all so one asset failure doesn't crash the pool.
                     outcome = FinalizeOutcome(
                         asset_id=asset_id,
                         status="failed",
@@ -258,7 +281,15 @@ def _finalize_single_asset(
     skip_validate: bool,
     logger: logging.Logger,
 ) -> FinalizeOutcome:
-    """Validate one edited asset and re-import it via WolvenKit."""
+    """Validate one edited asset and re-import it via WolvenKit.
+
+    Two-step process:
+      1. Validation (unless --skip-validate): check dimensions and alpha
+         against the original metadata stored in the manifest.
+      2. WolvenKit import: unbundle original .xbm, place edited image
+         alongside it, run ``import -p <dir> -k`` to apply pixels while
+         preserving the .xbm's texture metadata (IsGamma, compression, etc.).
+    """
     edited_path = config.resolve_user_path(row.edited_path)
 
     if not skip_validate:
@@ -325,13 +356,21 @@ def _filter_changed_rows(
 
 
 def _is_changed(config: PipelineConfig, row: AssetRecord) -> bool:
-    """Return True if the edited file exists and differs from the editable source."""
+    """Return True if the edited file exists and differs from the editable source.
+
+    Used by ``--only-changed`` to skip textures the user hasn't modified.
+    If the editable source doesn't exist (shouldn't happen normally), treat
+    the edit as changed to be safe.  SHA-256 comparison is used rather than
+    file size because image editors may produce same-size files with different
+    pixel data.
+    """
     edited = config.resolve_user_path(row.edited_path)
     source = config.resolve_user_path(row.editable_source_path)
 
     if not edited.exists():
         return False
     if not source.exists():
+        # Source missing — assume changed to avoid silently skipping.
         return True
 
     return sha256_file(edited) != sha256_file(source)

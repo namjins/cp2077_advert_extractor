@@ -54,10 +54,15 @@ def extract_cmd(
     ),
 ) -> None:
     """Extract approved assets and generate editable files."""
+    # Note: the CLI --force flag controls two things:
+    #   1. Suppresses the confirmation prompt when --clean would delete edited files
+    #   2. Passed as force=clean to _export_single_asset, which disables the
+    #      skip-existing optimization (forces re-export even if files exist)
     try:
         cfg = load_config(config)
 
-        # Guard against accidental deletion of user-edited textures
+        # Guard against accidental deletion of user-edited textures.
+        # Only prompts when --clean is used AND --force is not.
         if clean and not force and cfg.ads_edited_dir.exists():
             edited_files = list(cfg.ads_edited_dir.iterdir())
             if edited_files:
@@ -192,6 +197,10 @@ def finalize_cmd(
 
 
 def _print_error(message: str) -> int:
+    """Print a Rich-formatted error message and return exit code 1.
+
+    Used as the exit code for typer.Exit in all command error handlers.
+    """
     console.print(f"[red]error:[/red] {message}")
     return 1
 

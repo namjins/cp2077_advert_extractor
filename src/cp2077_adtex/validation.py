@@ -47,6 +47,18 @@ def validate_edited_asset(
     preserve_dimensions: bool,
     preserve_alpha: bool,
 ) -> ValidationResult:
+    """Check that a user-edited image is compatible with the original texture.
+
+    Validation checks (each controlled by a config flag):
+      - preserve_dimensions: edited image must match original width x height.
+        Skipped if the original dimensions are unknown (width/height = 0,
+        meaning the texture hasn't been exported yet).
+      - preserve_alpha: edited image must have the same alpha channel
+        presence as the original.
+
+    Returns a ValidationResult with ok=True if all checks pass, or a list
+    of human-readable failure messages otherwise.
+    """
     messages: list[str] = []
 
     if not edited_path.exists():
@@ -59,6 +71,7 @@ def validate_edited_asset(
         messages.append(str(exc))
         return ValidationResult(ok=False, messages=messages, image=None)
 
+    # Dimension check: only compare when we have known original dimensions.
     if preserve_dimensions and asset.width > 0 and asset.height > 0:
         if (edited_meta.width, edited_meta.height) != (asset.width, asset.height):
             messages.append(
@@ -67,6 +80,7 @@ def validate_edited_asset(
                 f"got {edited_meta.width}x{edited_meta.height}"
             )
 
+    # Alpha check: mismatched alpha can cause transparency artifacts in-game.
     if preserve_alpha and edited_meta.has_alpha != asset.has_alpha:
         messages.append(
             "Alpha channel mismatch: "
@@ -78,6 +92,14 @@ def validate_edited_asset(
 
 
 def _image_has_alpha(image: Image.Image) -> bool:
+    """Detect whether an image has an alpha channel.
+
+    Two cases:
+      1. Explicit alpha band — modes like RGBA, LA have "A" in getbands().
+      2. Palette transparency — mode "P" (palettized) images can carry
+         transparency via the "transparency" info key rather than a
+         separate alpha band.  This is common in indexed-color PNGs.
+    """
     if "A" in image.getbands():
         return True
     if image.mode == "P" and "transparency" in image.info:

@@ -15,6 +15,12 @@ description = "Removes or replaces explicit in-game advertisements in Cyberpunk 
 editable_format = "tga"
 preserve_dimensions = true
 preserve_alpha = true
+# WolvenKit texture group preset — informational only.
+# The current -k workflow preserves the original .xbm's metadata (IsGamma,
+# TextureGroup, compression), so this value is not passed to WolvenKit.
+# Documented here for reference when troubleshooting color-space issues.
+# Common values: TexG_Generic_UI, TexG_Generic_Color, TexG_Generic_Normal
+import_preset = "TexG_Generic_UI"
 
 [discovery]
 mode = "hybrid"
