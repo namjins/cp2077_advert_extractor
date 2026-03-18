@@ -235,6 +235,14 @@ def run_extract_stage(
     for row in manifest_rows:
         _ensure_edit_paths(config, row)
 
+    # --clean destroyed the edited/ directory, so "ready" rows can no longer
+    # be finalized.  Demote them back to "approved" so they get a fresh
+    # export without a dangling edited_path reference.
+    if clean:
+        for row in manifest_rows:
+            if row.status == "ready":
+                row.status = "approved"
+
     # Only extract rows that are approved (ready for first export) or ready
     # (already edited, but may need metadata refresh).
     approved = [row for row in manifest_rows if row.status in {"approved", "ready"}]

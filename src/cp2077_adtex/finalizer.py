@@ -92,7 +92,7 @@ def run_finalize_stage(
     # to skip assets the user hasn't actually modified.  Useful when iterating
     # on a few textures out of a large set.
     if only_changed:
-        target_rows = _filter_changed_rows(config, target_rows, config.performance.workers)
+        target_rows = _filter_changed_rows(config, target_rows, config.performance.workers, logger)
 
     processed = len(target_rows)
     succeeded = 0
@@ -333,6 +333,7 @@ def _filter_changed_rows(
     config: PipelineConfig,
     rows: list[AssetRecord],
     workers: int,
+    logger: logging.Logger,
 ) -> list[AssetRecord]:
     if len(rows) <= 1:
         return [row for row in rows if _is_changed(config, row)]
@@ -349,7 +350,13 @@ def _filter_changed_rows(
                 progress.advance(task_id)
                 try:
                     keep[asset_id] = bool(future.result())
-                except Exception:
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "Error comparing edited file for asset %s, "
+                        "excluding from changed set: %s",
+                        asset_id,
+                        exc,
+                    )
                     keep[asset_id] = False
 
     return [row for row in rows if keep.get(row.asset_id, False)]

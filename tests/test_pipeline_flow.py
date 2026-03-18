@@ -161,4 +161,37 @@ def test_extract_then_finalize_flow(tmp_path: Path) -> None:
     assert "archive/pc/mod/ads_test_mod.archive" in names
 
 
+def test_filter_changed_rows_logs_on_exception(tmp_path: Path, caplog, monkeypatch) -> None:
+    """_filter_changed_rows must log a warning (not silently skip) on errors."""
+    from cp2077_adtex import finalizer as fin
+
+    cfg = load_config(_write_config(tmp_path))
+    cfg.paths.game_dir.mkdir(parents=True, exist_ok=True)
+
+    def _boom(*args, **kwargs):
+        raise OSError("disk on fire")
+
+    monkeypatch.setattr(fin, "_is_changed", _boom)
+
+    rows = [
+        AssetRecord(
+            asset_id=f"asset_{i}",
+            archive_path="archive/pc/content/basegame_1.archive",
+            relative_texture_path=f"base/textures/ad_{i}.xbm",
+            editable_source_path=f"work/ads/editable/ad_{i}.tga",
+            edited_path=f"work/ads/edited/ad_{i}.tga",
+            width=0, height=0, has_alpha=False, status="ready", notes="",
+        )
+        for i in range(2)  # need 2+ rows to hit the parallel code path
+    ]
+
+    logger = logging.getLogger("test.filter")
+
+    with caplog.at_level(logging.WARNING, logger="test.filter"):
+        result = fin._filter_changed_rows(cfg, rows, workers=2, logger=logger)
+
+    assert len(result) == 0, "All rows should be excluded on error"
+    assert any("asset_0" in msg for msg in caplog.messages), (
+        "Expected a warning log mentioning the asset_id"
+    )
 

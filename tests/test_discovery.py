@@ -20,7 +20,7 @@ from cp2077_adtex.discovery import (
     merge_candidates_into_manifest,
 )
 from cp2077_adtex.extractor import _ensure_edit_paths, run_extract_stage
-from cp2077_adtex.manifest import write_manifest
+from cp2077_adtex.manifest import read_manifest, write_manifest
 from cp2077_adtex.models import AssetRecord
 
 
@@ -512,4 +512,37 @@ class TestExtractStage:
         hash_file = cfg.ads_editable_dir / f"{asset_id}.tga"
         assert hash_file.exists(), (
             "Editable file was not created at the manifest-specified path"
+        )
+
+    def test_clean_demotes_ready_to_approved(self, tmp_path: Path) -> None:
+        """Extract with --clean must demote ready→approved since edited files are wiped."""
+        cfg = load_config(_write_config(tmp_path))
+        runner = FakeRunner()
+        rows = [
+            _make_row(
+                "asset_ready",
+                "base/gameplay/gui/world/adverts/rayfield/rayfield_720p.xbm",
+                editable_source_path="work/ads/editable/rayfield_720p.tga",
+                edited_path="work/ads/edited/rayfield_720p.tga",
+                status="ready",
+            )
+        ]
+
+        cfg.paths.game_dir.mkdir(parents=True, exist_ok=True)
+        write_manifest(cfg.discovery.approved_manifest, rows)
+        logger = logging.getLogger("test")
+        logger.handlers = [logging.NullHandler()]
+
+        result = run_extract_stage(
+            cfg, runner,
+            discover=False, all_known_roots=False,
+            skip_extract=False, clean=True,
+            logger=logger,
+            log_path=cfg.paths.output_dir / "pipeline.log",
+        )
+
+        assert result.succeeded == 1
+        manifest_rows = read_manifest(cfg.discovery.approved_manifest)
+        assert manifest_rows[0].status == "approved", (
+            "Ready rows should be demoted to approved after --clean"
         )
