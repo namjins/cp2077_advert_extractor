@@ -161,6 +161,76 @@ def test_extract_then_finalize_flow(tmp_path: Path) -> None:
     assert "archive/pc/mod/ads_test_mod.archive" in names
 
 
+def test_finalize_per_bundle(tmp_path: Path) -> None:
+    """--per-bundle produces individual .archive files per texture set in one zip."""
+    config_path = _write_config(tmp_path)
+    cfg = load_config(config_path)
+    cfg.paths.game_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create 3 assets forming 2 bundles:
+    #   broseph_atlas + broseph_atlas_720p -> bundle "broseph_atlas"
+    #   lizzies                            -> bundle "lizzies"
+    rows = [
+        AssetRecord(
+            asset_id="a1",
+            archive_path="archive/pc/content/basegame_1.archive",
+            relative_texture_path="base/adverts/broseph/broseph_atlas.xbm",
+            editable_source_path="work/ads/editable/broseph_atlas.tga",
+            edited_path="work/ads/edited/broseph_atlas.tga",
+            width=64, height=64, has_alpha=True, status="ready", notes="",
+        ),
+        AssetRecord(
+            asset_id="a2",
+            archive_path="archive/pc/content/basegame_1.archive",
+            relative_texture_path="base/adverts/broseph/broseph_atlas_720p.xbm",
+            editable_source_path="work/ads/editable/broseph_atlas_720p.tga",
+            edited_path="work/ads/edited/broseph_atlas_720p.tga",
+            width=64, height=64, has_alpha=True, status="ready", notes="",
+        ),
+        AssetRecord(
+            asset_id="a3",
+            archive_path="archive/pc/content/basegame_1.archive",
+            relative_texture_path="base/adverts/lizzies/lizzies.xbm",
+            editable_source_path="work/ads/editable/lizzies.tga",
+            edited_path="work/ads/edited/lizzies.tga",
+            width=64, height=64, has_alpha=True, status="ready", notes="",
+        ),
+    ]
+    write_manifest(cfg.discovery.approved_manifest, rows)
+
+    # Create edited images so validation passes.
+    for row in rows:
+        edited = cfg.resolve_user_path(row.edited_path)
+        edited.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (64, 64), color=(0, 255, 0, 255)).save(edited)
+
+    logger = logging.getLogger("test.per_bundle")
+    logger.handlers = []
+    logger.addHandler(logging.NullHandler())
+
+    result = run_finalize_stage(
+        cfg,
+        FakeRunner(),
+        only_changed=False,
+        skip_validate=False,
+        per_bundle=True,
+        logger=logger,
+        log_path=cfg.paths.output_dir / "pipeline_finalize.log",
+    )
+
+    assert result.succeeded == 3
+    assert result.zip_path is not None
+    assert result.zip_path.exists()
+
+    with zipfile.ZipFile(result.zip_path, "r") as handle:
+        names = set(handle.namelist())
+
+    assert "archive/pc/mod/broseph_atlas.archive" in names
+    assert "archive/pc/mod/lizzies.archive" in names
+    # Should NOT contain the single combined archive.
+    assert "archive/pc/mod/ads_test_mod.archive" not in names
+
+
 def test_filter_changed_rows_logs_on_exception(tmp_path: Path, caplog, monkeypatch) -> None:
     """_filter_changed_rows must log a warning (not silently skip) on errors."""
     from cp2077_adtex import finalizer as fin

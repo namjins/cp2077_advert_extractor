@@ -52,6 +52,7 @@ source .venv/Scripts/activate && python -m cp2077_adtex finalize --config config
 Flags:
 - `--only-changed` — process only assets whose edited file differs from editable source (use this when you've edited a few specific ads)
 - `--skip-validate` — skip image dimension/alpha validation checks
+- `--per-bundle` — produce individual .archive files per texture set instead of one combined archive (resolution variants like `_1080p`/`_720p` are grouped together)
 
 ### validate-list
 Cross-references a markdown research file against the manifest.
@@ -70,6 +71,7 @@ source .venv/Scripts/activate && python -m cp2077_adtex validate-list --config c
 
 - User edited "a few" or "some" ads → `finalize --only-changed`
 - User wants a full pack of everything → `finalize` (no --only-changed)
+- User wants individual archives per ad set → `finalize --per-bundle`
 - User wants to start fresh / re-extract → `extract --clean` (warn about edited file deletion)
 - User wants to find new assets → `discover-assets`
 - User says "just check, don't update" for discovery → `discover-assets --report-only`

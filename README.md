@@ -8,10 +8,10 @@ Config-driven Python CLI pipeline for extracting and repackaging Cyberpunk 2077 
 - Supports one-shot bulk extraction from known ad roots
 - Validates external research lists against extracted assets
 - Exports approved assets to editable `.tga` files
-- Auto-promotes assets to `ready` when an edited file is found in `work/ads/edited/`
+- Auto-promotes assets to `ready` when an edited file is found in `work/ads/edited/`, and auto-demotes back to `approved` when the file is removed
 - Validates edited files (file readability, dimensions, alpha)
 - Reimports valid edits into a packed staging tree
-- Builds an archive mod and packages `output/<mod_name>.zip`
+- Builds an archive mod and packages `output/<mod_name>.zip` (single archive or per-bundle)
 - Uses worker-based parallelism and rich progress bars for discovery/extract/finalize
 
 ## CLI
@@ -20,7 +20,7 @@ Config-driven Python CLI pipeline for extracting and repackaging Cyberpunk 2077 
 python -m cp2077_adtex extract         --config config.toml [--discover] [--all-known-roots] [--skip-extract] [--clean] [--force]
 python -m cp2077_adtex discover-assets --config config.toml [--report-only]
 python -m cp2077_adtex validate-list   --config config.toml --research-file path/to/report.md
-python -m cp2077_adtex finalize        --config config.toml [--only-changed] [--skip-validate]
+python -m cp2077_adtex finalize        --config config.toml [--only-changed] [--skip-validate] [--per-bundle]
 ```
 
 ## Installation
@@ -59,7 +59,13 @@ Required sections:
 3. Finalize — assets with a file in `edited/` are promoted to `ready` automatically:
 
 ```powershell
-.venv\Scripts\Activate.ps1; python -m cp2077_adtex finalize --config config.toml --only-changed
+.venv\Scripts\Activate.ps1; python -m cp2077_adtex finalize --config config.toml
+```
+
+To produce individual `.archive` files per texture set (e.g. one for `broseph_atlas`, one for `lizzies`, etc.) instead of a single combined archive:
+
+```powershell
+.venv\Scripts\Activate.ps1; python -m cp2077_adtex finalize --config config.toml --per-bundle
 ```
 
 ## Validate Research List
@@ -101,7 +107,7 @@ Editable and edited filenames are derived from the in-archive texture path.
 When two textures share the same filename stem (e.g. two different `banner_d.xbm` from different directories), the parent directory is prepended (`signage__banner_d.tga`).
 The manifest (`assets_manifest.csv`) maps each friendly filename back to the correct archive path for repacking.
 
-- `output/<mod_name>.zip` with `archive/pc/mod/<mod_name>.archive`
+- `output/<mod_name>.zip` — by default contains a single `archive/pc/mod/<mod_name>.archive`; with `--per-bundle`, contains one `archive/pc/mod/<bundle_name>.archive` per texture set
 - `output/asset_log.csv`
 - `output/summary.txt`
 - `output/pipeline_<timestamp>.log`
@@ -112,8 +118,9 @@ The manifest (`assets_manifest.csv`) maps each friendly filename back to the cor
 
 - `--clean` (extract): deletes `work/ads/` and rebuilds from scratch. Prompts for confirmation if `edited/` has files.
 - `--force` (extract): suppresses the `--clean` confirmation prompt and disables the skip-existing optimization (forces re-export of all textures even if cached files exist).
-- `--only-changed` (finalize): SHA-256 compares each edited file against the editable source; only genuinely modified textures are re-imported. Useful when iterating on a few textures from a large set.
+- `--only-changed` (finalize): skips assets whose edited file does not exist. Useful when iterating on a subset of textures.
 - `--skip-validate` (finalize): skips dimension and alpha channel checks before importing. Use when you intentionally changed image properties.
+- `--per-bundle` (finalize): produces individual `.archive` files per texture set instead of one combined archive. Textures sharing a base name (e.g. `broseph_atlas.tga`, `broseph_atlas_1080p.tga`, `broseph_atlas_720p.tga`) are grouped into one archive. All archives are packaged into a single zip. Users can selectively remove individual `.archive` files from `archive/pc/mod/` to disable specific ad replacements.
 
 ## Troubleshooting
 

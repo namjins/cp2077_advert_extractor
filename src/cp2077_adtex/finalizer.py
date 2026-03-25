@@ -1,18 +1,23 @@
 ﻿"""Finalize stage — validate edits, re-import to .xbm, pack archive, produce zip.
 
 Workflow for each asset with status="ready":
-  1. Validate the edited image (dimensions, alpha) unless --skip-validate
-  2. WolvenKit import: convert edited .tga back to .xbm in the packed/ staging tree
-  3. After all assets: WolvenKit pack: assemble packed/ into a single .archive
-  4. Package the .archive into output/<mod_name>.zip for installation
+  1. Auto-promote approved/failed assets to ready when an edited file exists;
+     auto-demote ready assets back to approved when the edited file is missing.
+  2. Validate the edited image (dimensions, alpha) unless --skip-validate
+  3. WolvenKit import: convert edited .tga back to .xbm in the packed/ staging tree
+  4. After all assets: WolvenKit pack: assemble packed/ into a single .archive
+     (or one .archive per bundle when --per-bundle is used)
+  5. Package the .archive(s) into output/<mod_name>.zip for installation
 
-The --only-changed flag adds a pre-filter that SHA-256 compares the edited
-file against the editable source — only genuinely modified textures get
-re-imported (useful for iterative editing of large sets).
+The --only-changed flag pre-filters to assets whose edited file exists.
+The --per-bundle flag groups textures by base name (stripping _1080p/_720p
+resolution suffixes) and produces one .archive per group.
 """
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import logging
@@ -22,10 +27,12 @@ from .config import PipelineConfig
 from .manifest import read_manifest, write_manifest
 from .models import AssetRecord
 from .progress import make_progress
-from .packager import package_mod_archive, sha256_file
+from .packager import package_mod_archive, package_mod_bundles, sha256_file
 from .reporting import AssetLogEntry, write_asset_log, write_summary
 from .validation import validate_edited_asset
 from .wolvenkit import WolvenKitRunner
+
+_RESOLUTION_SUFFIX_RE = re.compile(r"_(1080p|720p)$")
 
 
 @dataclass(slots=True)
@@ -53,6 +60,7 @@ def run_finalize_stage(
     *,
     only_changed: bool,
     skip_validate: bool,
+    per_bundle: bool = False,
     logger: logging.Logger,
     log_path: Path,
 ) -> FinalizeResult:
@@ -60,9 +68,10 @@ def run_finalize_stage(
     config.paths.output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "Starting finalize stage only_changed=%s skip_validate=%s workers=%s",
+        "Starting finalize stage only_changed=%s skip_validate=%s per_bundle=%s workers=%s",
         only_changed,
         skip_validate,
+        per_bundle,
         config.performance.workers,
     )
 
@@ -86,6 +95,21 @@ def run_finalize_stage(
     if promoted:
         logger.info("Auto-promoted %s asset(s) to ready (edited file found)", promoted)
 
+    # --- Auto-demotion ---
+    # Mirror of auto-promotion: if a row is "ready" but the edited file no
+    # longer exists (user deleted it), demote back to "approved" so it
+    # doesn't fail during import.
+    demoted = 0
+    for row in manifest_rows:
+        if row.status == "ready" and row.edited_path:
+            edited = config.resolve_user_path(row.edited_path)
+            if not edited.exists():
+                row.status = "approved"
+                row.notes = "Auto-demoted: edited file removed"
+                demoted += 1
+    if demoted:
+        logger.info("Auto-demoted %s asset(s) to approved (edited file missing)", demoted)
+
     target_rows = [row for row in manifest_rows if row.status == "ready"]
 
     # --only-changed: SHA-256 compare edited file against the editable source
@@ -104,10 +128,24 @@ def run_finalize_stage(
     if not target_rows:
         notes.append("No rows with status=ready matched finalize filters")
 
+    # Compute per-asset packed_root: in per-bundle mode each bundle key gets
+    # its own staging directory so WolvenKit can pack them independently.
+    if per_bundle:
+        bundle_assignments = {
+            row.asset_id: _bundle_key_from_row(row) for row in target_rows
+        }
+        packed_roots = {
+            asset_id: config.ads_packed_bundles_dir / bkey
+            for asset_id, bkey in bundle_assignments.items()
+        }
+    else:
+        packed_roots = {row.asset_id: config.ads_packed_dir for row in target_rows}
+
     outcomes = _finalize_assets_parallel(
         config,
         runner,
         target_rows,
+        packed_roots=packed_roots,
         skip_validate=skip_validate,
         logger=logger,
     )
@@ -162,16 +200,22 @@ def run_finalize_stage(
     # An empty .archive would be pointless and could confuse mod managers.
     zip_path: Path | None = None
     if succeeded > 0:
-        runner.pack_archive(
-            packed_root=config.ads_packed_dir,
-            output_archive=config.output_archive_path,
-            logger=logger,
-        )
-        zip_path = package_mod_archive(
-            config.output_archive_path,
-            config.paths.output_dir / f"{config.mod.name}.zip",
-            config.mod.name,
-        )
+        if per_bundle:
+            zip_path = _pack_and_zip_bundles(
+                config, runner, target_rows, outcomes, bundle_assignments,
+                notes, logger,
+            )
+        else:
+            runner.pack_archive(
+                packed_root=config.ads_packed_dir,
+                output_archive=config.output_archive_path,
+                logger=logger,
+            )
+            zip_path = package_mod_archive(
+                config.output_archive_path,
+                config.paths.output_dir / f"{config.mod.name}.zip",
+                config.mod.name,
+            )
         notes.append(f"packaged zip={zip_path}")
     else:
         notes.append("No successful imports; skipped pack and zip")
@@ -225,6 +269,7 @@ def _finalize_assets_parallel(
     runner: WolvenKitRunner,
     rows: list[AssetRecord],
     *,
+    packed_roots: dict[str, Path],
     skip_validate: bool,
     logger: logging.Logger,
 ) -> dict[str, FinalizeOutcome]:
@@ -250,6 +295,7 @@ def _finalize_assets_parallel(
                     config,
                     runner,
                     row,
+                    packed_root=packed_roots[row.asset_id],
                     skip_validate=skip_validate,
                     logger=logger,
                 ): row.asset_id
@@ -278,6 +324,7 @@ def _finalize_single_asset(
     runner: WolvenKitRunner,
     row: AssetRecord,
     *,
+    packed_root: Path,
     skip_validate: bool,
     logger: logging.Logger,
 ) -> FinalizeOutcome:
@@ -312,7 +359,7 @@ def _finalize_single_asset(
             archive_path=row.archive_path,
             relative_texture_path=row.relative_texture_path,
             edited_file=edited_path,
-            packed_root=config.ads_packed_dir,
+            packed_root=packed_root,
             uext=config.textures.editable_format,
             logger=logger,
         )
@@ -327,6 +374,78 @@ def _finalize_single_asset(
             status="failed",
             message=str(exc),
         )
+
+
+def _bundle_key_from_row(row: AssetRecord) -> str:
+    """Derive the bundle group name from an asset's edited filename.
+
+    Strips resolution suffixes (_1080p, _720p) from the friendly stem so
+    that e.g. broseph_atlas.tga, broseph_atlas_1080p.tga, and
+    broseph_atlas_720p.tga all map to bundle key "broseph_atlas".
+    """
+    stem = Path(row.edited_path).stem
+    return _RESOLUTION_SUFFIX_RE.sub("", stem)
+
+
+def _pack_and_zip_bundles(
+    config: PipelineConfig,
+    runner: WolvenKitRunner,
+    target_rows: list[AssetRecord],
+    outcomes: dict[str, FinalizeOutcome],
+    bundle_assignments: dict[str, str],
+    notes: list[str],
+    logger: logging.Logger,
+) -> Path:
+    """Pack each bundle's staging dir into its own .archive, then zip them all.
+
+    Returns the path to the output zip containing all bundle archives.
+    """
+    # Collect bundle keys that had at least one successful import.
+    succeeded_bundles: set[str] = set()
+    for row in target_rows:
+        outcome = outcomes.get(row.asset_id)
+        if outcome and outcome.status == "ok":
+            succeeded_bundles.add(bundle_assignments[row.asset_id])
+
+    notes.append(f"per-bundle mode: {len(succeeded_bundles)} bundles")
+
+    bundles_archive_dir = config.paths.output_dir / "bundle_archives"
+    bundles_archive_dir.mkdir(parents=True, exist_ok=True)
+
+    sorted_bundles = sorted(succeeded_bundles)
+    archive_paths: list[Path] = []
+
+    # Suppress INFO log lines on the console during the progress bar so
+    # WolvenKit command output doesn't overwrite the bar.  The file handler
+    # still captures everything at INFO level.
+    stream_handlers = [
+        h for h in logger.handlers if isinstance(h, logging.StreamHandler)
+        and not isinstance(h, logging.FileHandler)
+    ]
+    for h in stream_handlers:
+        h.setLevel(logging.WARNING)
+
+    try:
+        with make_progress() as progress:
+            task_id = progress.add_task("Packing bundles", total=len(sorted_bundles))
+            for bundle_key in sorted_bundles:
+                bundle_packed = config.ads_packed_bundles_dir / bundle_key
+                bundle_archive = bundles_archive_dir / f"{bundle_key}.archive"
+
+                runner.pack_archive(
+                    packed_root=bundle_packed,
+                    output_archive=bundle_archive,
+                    logger=logger,
+                )
+                archive_paths.append(bundle_archive)
+                logger.info("Packed bundle %s -> %s", bundle_key, bundle_archive)
+                progress.advance(task_id)
+    finally:
+        for h in stream_handlers:
+            h.setLevel(logging.INFO)
+
+    output_zip = config.paths.output_dir / f"{config.mod.name}.zip"
+    return package_mod_bundles(archive_paths, output_zip)
 
 
 def _filter_changed_rows(

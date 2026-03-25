@@ -36,15 +36,45 @@ def package_mod_archive(archive_path: Path, output_zip: Path, mod_name: str) -> 
     ensure_dir(output_zip.parent)
 
     arcname = f"archive/pc/mod/{mod_name}.archive"
-    info = zipfile.ZipInfo(arcname)
-    info.date_time = FIXED_ZIP_DT          # Reproducible builds
-    info.compress_type = zipfile.ZIP_DEFLATED
-    info.external_attr = 0o644 << 16       # Unix-style read permissions
 
     with zipfile.ZipFile(output_zip, mode="w") as zf:
-        with zf.open(info, "w") as dest, archive_path.open("rb") as src:
-            while chunk := src.read(1 << 20):  # 1 MB chunks
-                dest.write(chunk)
+        _add_archive_to_zip(zf, archive_path, arcname)
+
+    return output_zip
+
+
+def _add_archive_to_zip(zf: zipfile.ZipFile, archive_path: Path, arcname: str) -> None:
+    """Stream a single .archive file into an open ZipFile."""
+    info = zipfile.ZipInfo(arcname)
+    info.date_time = FIXED_ZIP_DT
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o644 << 16
+
+    with zf.open(info, "w") as dest, archive_path.open("rb") as src:
+        while chunk := src.read(1 << 20):
+            dest.write(chunk)
+
+
+def package_mod_bundles(archive_paths: list[Path], output_zip: Path) -> Path:
+    """Zip multiple .archive files into one installable mod layout.
+
+    Each archive is placed at ``archive/pc/mod/<stem>.archive`` inside the
+    zip.  Used by ``--per-bundle`` mode where each texture set has its own
+    .archive file.
+    """
+    if not archive_paths:
+        raise ValueError("No archive files to package")
+
+    for ap in archive_paths:
+        if not ap.exists():
+            raise FileNotFoundError(f"Packed archive not found: {ap}")
+
+    ensure_dir(output_zip.parent)
+
+    with zipfile.ZipFile(output_zip, mode="w") as zf:
+        for ap in sorted(archive_paths):
+            arcname = f"archive/pc/mod/{ap.stem}.archive"
+            _add_archive_to_zip(zf, ap, arcname)
 
     return output_zip
 

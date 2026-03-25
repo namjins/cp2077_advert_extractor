@@ -43,6 +43,7 @@ source .venv/Scripts/activate && python -m cp2077_adtex <stage> --config config.
 |------|---------|
 | `--only-changed` | Process only assets whose edited file differs from the source |
 | `--skip-validate` | Skip image dimension/alpha validation |
+| `--per-bundle` | Produce individual `.archive` files per texture set instead of one combined archive |
 
 ### `validate-list` — cross-reference a markdown research file against the manifest
 | Flag | Purpose |
@@ -82,6 +83,12 @@ source .venv/Scripts/activate && python -m cp2077_adtex <stage> --config config.
 ```powershell
 .venv\Scripts\Activate.ps1; python -m cp2077_adtex finalize --config config.toml
 ```
+
+### Finalize with individual archives per texture set
+```powershell
+.venv\Scripts\Activate.ps1; python -m cp2077_adtex finalize --config config.toml --per-bundle
+```
+Each ad group (e.g. `broseph_atlas` + `broseph_atlas_1080p` + `broseph_atlas_720p`) gets its own `.archive` inside the zip. Users can selectively remove individual `.archive` files from `archive/pc/mod/` to disable specific ad replacements.
 
 ### Finalize without image validation
 ```powershell

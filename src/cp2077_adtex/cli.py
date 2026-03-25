@@ -168,6 +168,11 @@ def finalize_cmd(
         "--skip-validate",
         help="Skip image validation checks during finalize",
     ),
+    per_bundle: bool = typer.Option(
+        False,
+        "--per-bundle",
+        help="Produce individual .archive files per texture set instead of one combined archive",
+    ),
 ) -> None:
     """Validate edited assets, import, pack archive, and output installable zip."""
     try:
@@ -179,6 +184,7 @@ def finalize_cmd(
             runner,
             only_changed=only_changed,
             skip_validate=skip_validate,
+            per_bundle=per_bundle,
             logger=logger,
             log_path=log_path,
         )

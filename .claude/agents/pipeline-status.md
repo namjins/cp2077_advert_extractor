@@ -43,7 +43,7 @@ Recommended next action:
 
 ## Recommended next action logic
 
-- If there are `ready` assets → suggest `finalize --only-changed`
+- If there are `ready` assets → suggest `finalize` (or `finalize --per-bundle` for individual archives per texture set)
 - If there are `approved` assets with no editable files yet → suggest `extract`
 - If `failed` assets exist → summarize the errors and suggest fixes
 - If manifest is empty or missing → suggest `discover-assets` then `extract`

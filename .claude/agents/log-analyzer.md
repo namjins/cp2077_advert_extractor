@@ -64,7 +64,7 @@ ROOT CAUSES & FIXES
 |---|---|---|
 | `dimension mismatch` | Edited image resized | Resize to match original, or set `preserve_dimensions = false` |
 | `alpha channel mismatch` | Edited image lost/gained alpha | Match alpha presence of original, or set `preserve_alpha = false` |
-| `edited file not found` | No file in `work/ads/edited/` | Copy your edited texture to the edited directory with the correct filename |
+| `edited file not found` | No file in `work/ads/edited/` | The pipeline now auto-demotes `ready` assets back to `approved` when the edited file is missing, so this should be rare. If it still occurs (file deleted mid-run), copy the edited texture to the edited directory or set status to `skipped` in the manifest. |
 | `WolvenKit exit code` | WolvenKit CLI error | Check WolvenKit path in config, check stderr for details |
 | `PIL cannot identify image` | Corrupt or wrong-format file | Re-export your texture as TGA or PNG |
 | `permission denied` | File locked | Close any image editor that has the file open |

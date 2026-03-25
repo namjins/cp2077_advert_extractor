@@ -93,6 +93,10 @@ class PipelineConfig:
         return self.ads_root_dir / "packed"
 
     @property
+    def ads_packed_bundles_dir(self) -> Path:
+        return self.ads_root_dir / "packed_bundles"
+
+    @property
     def output_archive_path(self) -> Path:
         return self.paths.output_dir / "archive" / "pc" / "mod" / f"{self.mod.name}.archive"
 
