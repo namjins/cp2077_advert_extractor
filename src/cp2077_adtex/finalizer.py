@@ -363,23 +363,13 @@ def _filter_changed_rows(
 
 
 def _is_changed(config: PipelineConfig, row: AssetRecord) -> bool:
-    """Return True if the edited file exists and differs from the editable source.
+    """Return True if the edited file exists on disk.
 
-    Used by ``--only-changed`` to skip textures the user hasn't modified.
-    If the editable source doesn't exist (shouldn't happen normally), treat
-    the edit as changed to be safe.  SHA-256 comparison is used rather than
-    file size because image editors may produce same-size files with different
-    pixel data.
+    Used by ``--only-changed`` to skip assets with no edited file.
+    Presence in the edited folder is treated as intent to include the
+    asset — no SHA comparison against the editable source is performed.
     """
     edited = config.resolve_user_path(row.edited_path)
-    source = config.resolve_user_path(row.editable_source_path)
-
-    if not edited.exists():
-        return False
-    if not source.exists():
-        # Source missing — assume changed to avoid silently skipping.
-        return True
-
-    return sha256_file(edited) != sha256_file(source)
+    return edited.exists()
 
 
