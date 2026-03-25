@@ -22,6 +22,8 @@ tmp_*/
 
 # Local config
 config.toml
+.claude/settings.local.json
+.claude/settings.json
 
 # OS/editor noise
 .DS_Store
